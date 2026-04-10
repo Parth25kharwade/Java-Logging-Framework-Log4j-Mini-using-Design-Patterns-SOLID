@@ -1,0 +1,243 @@
+
+╔══════════════════════════════════════════════════════════════════════════════════════════╗
+║                     LogFramework — Complete UML Class Diagram                          ║
+╚══════════════════════════════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ MODEL LAYER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ┌─────────────────────────────┐        ┌───────────────────────────────────────┐
+  │       <<enum>>              │        │         <<record>>                    │
+  │         LogLevel            │        │           LogRecord                   │
+  ├─────────────────────────────┤        ├───────────────────────────────────────┤
+  │ + DEBUG  (priority=1)       │        │ - level      : LogLevel               │
+  │ + INFO   (priority=2)       │◄───────│ - message    : String                 │
+  │ + WARN   (priority=3)       │        │ - timestamp  : Instant                │
+  │ + ERROR  (priority=4)       │        │ - threadName : String                 │
+  │ + FATAL  (priority=5)       │        │ - throwable  : Optional<Throwable>    │
+  ├─────────────────────────────┤        ├───────────────────────────────────────┤
+  │ + getPriority() : int       │        │ + of(level, msg) : LogRecord    [static]│
+  │ + getLabel()    : String    │        │ + of(level, msg, t) : LogRecord [static]│
+  │ + isAtLeast(LogLevel): bool │        │ + formatted() : String                │
+  └─────────────────────────────┘        └───────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ CONFIG LAYER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ┌──────────────────────────────────────────┐
+  │             LoggerConfig                 │
+  ├──────────────────────────────────────────┤
+  │ - minimumLevel       : LogLevel          │
+  │ - logFilePath        : String            │
+  │ - asyncThreadPoolSize: int               │
+  │ - cloudEnabled       : boolean           │
+  │ - cloudEndpoint      : String            │
+  ├──────────────────────────────────────────┤
+  │ + load() : LoggerConfig         [static] │  ← reads logger.properties
+  │ + getMinimumLevel() : LogLevel           │
+  │ + getLogFilePath()  : String             │
+  │ + getAsyncThreadPoolSize() : int         │
+  │ + isCloudEnabled()  : boolean            │
+  │ + getCloudEndpoint(): String             │
+  └──────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ BRIDGE PATTERN — OUTPUT LAYER  (Structural)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ┌──────────────────────────────┐
+  │       <<interface>>          │
+  │         LogOutput            │   ← BRIDGE: Implementation interface
+  │       AutoCloseable          │
+  ├──────────────────────────────┤
+  │ + write(LogRecord) : void    │
+  │ + name() : String            │
+  │ + close() : void  [default]  │
+  └──────────┬───────────────────┘
+             │
+             │  implements
+     ┌───────┼──────────────────────┐
+     │       │                      │
+     ▼       ▼                      ▼
+  ┌──────────────┐  ┌────────────────────┐  ┌──────────────────────────┐
+  │ConsoleOutput │  │    FileOutput       │  │      CloudOutput         │
+  ├──────────────┤  ├────────────────────┤  ├──────────────────────────┤
+  │-useColor:bool│  │-basePath : String   │  │-endpoint  : String       │
+  │              │  │-writer   : Writer   │  │-buffer    : BlockingQueue│
+  │              │  │-lock : ReentrantLock│  │-scheduler : Executor     │
+  ├──────────────┤  ├────────────────────┤  │-droppedCount: AtomicLong │
+  │+write()      │  │+write()             │  ├──────────────────────────┤
+  │+name()       │  │+name()              │  │+write()                  │
+  │-colorize()   │  │+close()             │  │+name()                   │
+  │              │  │-rotateIfNeeded()    │  │+close()                  │
+  └──────────────┘  └────────────────────┘  │+droppedCount() : long    │
+                                             │-flush()                  │
+                                             └──────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ CHAIN OF RESPONSIBILITY — HANDLER LAYER  (Behavioral)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ┌────────────────────────────────────────────────────────────┐
+  │            <<sealed abstract>>                             │
+  │                LogHandler                                  │
+  │  permits: DebugHandler, InfoHandler, WarnHandler,          │
+  │           ErrorHandler, FatalHandler                       │
+  ├────────────────────────────────────────────────────────────┤
+  │ # ownLevel  : LogLevel                                     │
+  │ # outputs   : List<LogOutput>                              │
+  │ - next      : Optional<LogHandler>                         │
+  ├────────────────────────────────────────────────────────────┤
+  │ + setNext(LogHandler) : LogHandler                         │
+  │ + handle(LogRecord) : void          [final]                │
+  │ # dispatch(LogRecord) : void        [protected, overridable]│
+  │ + buildDefaultChain(List<LogOutput>) : LogHandler [static] │
+  │ + buildCustomChain(...) : LogHandler              [static] │
+  └───────────────────────────┬────────────────────────────────┘
+                              │  extends (sealed)
+          ┌────────┬──────────┼──────────┬────────────┐
+          ▼        ▼          ▼          ▼            ▼
+  ┌──────────┐ ┌─────────┐ ┌────────┐ ┌──────────┐ ┌──────────┐
+  │  Debug   │ │  Info   │ │  Warn  │ │  Error   │ │  Fatal   │
+  │ Handler  │ │ Handler │ │Handler │ │ Handler  │ │ Handler  │
+  └──────────┘ └─────────┘ └────────┘ └──────────┘ └──────────┘
+       │             │           │          │              │
+       └─────────────┴───────────┴──────────┴──────────────┘
+                Chain: DEBUG → INFO → WARN → ERROR → FATAL
+                (each passes the record to the next handler)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ SINGLETON + BUILDER — LOGGER LAYER  (Creational)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ┌──────────────────────────────────────────────────────┐
+  │            LoggerBuilder                             │
+  ├──────────────────────────────────────────────────────┤
+  │ - config  : LoggerConfig                             │
+  │ - outputs : List<LogOutput>                          │
+  ├──────────────────────────────────────────────────────┤
+  │ + newBuilder() : LoggerBuilder           [static]    │
+  │ + withConfig(LoggerConfig) : LoggerBuilder           │
+  │ + withConsole()  : LoggerBuilder                     │
+  │ + withFile(path) : LoggerBuilder                     │
+  │ + withCloud(url) : LoggerBuilder                     │
+  │ + withOutput(LogOutput) : LoggerBuilder              │
+  │ + build() : Logger                                   │
+  └─────────────────────┬────────────────────────────────┘
+                        │ configures
+                        ▼
+  ┌──────────────────────────────────────────────────────────────┐
+  │          <<enum Singleton>>                                  │
+  │                Logger                                        │
+  │          INSTANCE  (one JVM-guaranteed instance)             │
+  ├──────────────────────────────────────────────────────────────┤
+  │ - config           : LoggerConfig       [volatile]           │
+  │ - handlerChainHead : LogHandler         [volatile]           │
+  │ - outputs          : List<LogOutput>    [volatile]           │
+  │ - asyncExecutor    : ExecutorService                         │
+  │ - asyncQueue       : LinkedBlockingQueue<LogRecord>          │
+  │ - totalLogged      : AtomicLong                              │
+  │ - totalDropped     : AtomicLong                              │
+  ├──────────────────────────────────────────────────────────────┤
+  │ + configure(config, outputs) : Logger                        │
+  │ + log(level, message) : void                                 │
+  │ + log(level, message, Throwable) : void                      │
+  │ + debug / info / warn / error / fatal : void  (convenience)  │
+  │ + totalLogged()  : long                                      │
+  │ + totalDropped() : long                                      │
+  │ + shutdown() : void                                          │
+  │ - submitAsync(LogRecord) : void                              │
+  │ - startAsyncWorker(int) : void                               │
+  │ - drainLoop() : void                                         │
+  │ - dispatchToChain(LogRecord) : void                          │
+  └──────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ END-TO-END EXECUTION FLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Application Thread               Async Worker Thread(s)
+  ──────────────────               ──────────────────────
+
+  logger.info("msg")
+       │
+       ▼
+  Logger.INSTANCE.log(INFO, "msg")
+       │
+       ▼
+  Level check vs minimumLevel  ──✗──► (drop silently if below threshold)
+       │ ✓
+       ▼
+  LogRecord.of(INFO, "msg")      ← Java 17 Record (immutable, timestamped)
+       │
+       ▼
+  asyncQueue.offer(record)       ← Non-blocking; drops if queue full
+       │
+       │              ┌──────────────────────────────────────────┐
+       │              │  drainLoop() — BlockingQueue.poll()       │
+       │              │       │                                   │
+       │              │       ▼                                   │
+       │              │  LogHandler.handle(record)                │
+       │              │       │                                   │
+       │              │       ▼                                   │
+       │              │  DebugHandler.handle() ─ level≠DEBUG ──►  │
+       │              │       │                                   │
+       │              │  InfoHandler.handle()  ─ level==INFO ─┐  │
+       │              │       │                               ▼  │
+       │              │       │                    dispatch(record)│
+       │              │       │                        │          │
+       │              │       │              ┌─────────┼──────┐   │
+       │              │       │              ▼         ▼      ▼   │
+       │              │       │         Console     File   Cloud   │
+       │              │       │          .write()  .write() .write()│
+       │              │       │                               │    │
+       │              │  WarnHandler.handle()  ─ level≠WARN ──►   │
+       │              │  ErrorHandler.handle() ─ level≠ERROR ──►  │
+       │              │  FatalHandler.handle() ─ level≠FATAL ──►  │
+       │              │  (end of chain)                           │
+       │              └──────────────────────────────────────────┘
+       ▼
+  returns immediately (caller not blocked)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ JAVA 17 FEATURES USAGE MAP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Feature                  │ Where Used
+  ─────────────────────────┼──────────────────────────────────────────────
+  Records                  │ LogRecord.java — immutable log message model
+  Sealed classes           │ LogHandler.java — exhaustive handler hierarchy
+  Switch expressions       │ ConsoleOutput.colorize(), Main.java level routing
+  Text blocks / formatted()│ LogRecord.formatted(), CloudOutput.buildJsonPayload()
+  Pattern matching instanceof│ LogRecord compact constructor validation
+  Optional                 │ LogRecord.throwable, LogHandler.next
+  Streams + toList()       │ CloudOutput.buildJsonPayload(), LogHandler.dispatch()
+  var (local type inference)│ CloudOutput.buildJsonPayload() entries variable
+  Enum singleton           │ Logger.INSTANCE — thread-safe, reflection-proof
+  ─────────────────────────┴──────────────────────────────────────────────
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ SOLID PRINCIPLES MAP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Principle  │ Where Applied
+  ───────────┼────────────────────────────────────────────────────────────
+  S — SRP    │ LogRecord (data only), LogOutput (output only),
+             │ LoggerConfig (config only), each Handler (one level only)
+  O — OCP    │ New outputs: implement LogOutput, zero existing code changes
+             │ New levels:  add enum + permitted subclass, zero changes
+  L — LSP    │ All LogOutput impls substitutable; all LogHandlers substitutable
+  I — ISP    │ LogOutput: write() + name() + close() — nothing extra forced
+  D — DIP    │ Logger depends on LogOutput interface, not Console/File/Cloud
+             │ LogHandler depends on LogOutput interface
+             │ Main.java depends on Logger + LoggerBuilder abstractions
+  ───────────┴────────────────────────────────────────────────────────────
